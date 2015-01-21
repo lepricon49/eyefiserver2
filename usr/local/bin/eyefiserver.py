@@ -678,7 +678,10 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
                 timeoffset = time.timezone
             timezone = timeoffset / 60 / 60 * -1
             imageDate = datetime.fromtimestamp(member.mtime) - timedelta(hours=timezone)
-            uploadDir = imageDate.strftime(self.server.config.get('EyeFiServer','upload_dir'))
+
+            mac_to_uploaddir_map = self._get_mac_uploaddir_dict()
+            mac = handler.extractedElements["macaddress"]
+            uploadDir = imageDate.strftime(mac_to_uploaddir_map[mac])
             eyeFiLogger.debug("Creating folder " + uploadDir)
             if not os.path.isdir(uploadDir):
                 os.makedirs(uploadDir)
@@ -855,6 +858,21 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
         doc.appendChild(SOAPElement)
 
         return doc.toxml(encoding="UTF-8")
+
+    def _get_mac_uploaddir_dict(self):
+        macs = {}
+        upload_dirs = {}
+        for key, value in self.server.config.items('EyeFiServer'):
+            if key.find('upload_dirs_') == 0:
+                index = int(key[12:])
+                upload_dirs[index] = value
+            elif key.find('mac_') == 0:
+                index = int(key[4:])
+                macs[index] = value
+        d = {}
+        for key in macs.keys():
+            d[macs[key]] = upload_dirs[key]
+        return d
 
     def _get_mac_uploadkey_dict(self):
         macs = {}
