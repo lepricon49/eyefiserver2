@@ -174,11 +174,10 @@ class Daemon:
             message = "pidfile %s does not exist. Daemon not running?\n"
             sys.stderr.write(message % self.pidfile)
             return 1
-
         # Try killing the daemon process
         try:
             while 1:
-                os.kill(pid, SIGTERM)
+                os.kill(pid, signal.SIGQUIT)
                 time.sleep(0.1)
         except OSError, err:
             err = str(err)
