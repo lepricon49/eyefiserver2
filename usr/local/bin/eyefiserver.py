@@ -861,16 +861,31 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
     def _get_mac_uploaddir_dict(self):
         macs = {}
         upload_dirs = {}
+        uploadDir = ""
+        try:
+            uploadDir = self.server.config.get('EyeFiServer','upload_dir')
+        except:
+            uploadDir = "" 
         for key, value in self.server.config.items('EyeFiServer'):
-            if key.find('upload_dirs_') == 0:
-                index = int(key[12:])
-                upload_dirs[index] = value
-            elif key.find('mac_') == 0:
-                index = int(key[4:])
-                macs[index] = value
+            try:
+                if key.find('upload_dirs_') == 0:
+                    index = int(key[12:])
+                    upload_dirs[index] = value
+                elif key.find('mac_') == 0:
+                    index = int(key[4:])
+                    macs[index] = value 
+            except:
+                eyeFiLogger.info( "upload_dirs not defined, hopefully upload_dir is: ")   
         d = {}
         for key in macs.keys():
-            d[macs[key]] = upload_dirs[key]
+            if len(upload_dirs) == 0 and len(uploadDir) == 0:
+                eyeFiLogger.error( "Neither upload_dir or upload_dirs_0 are defined in the config file, you must define one or the other")
+                system.exit(1)
+            if len(upload_dirs) != 0:
+                d[macs[key]] = upload_dirs[key]
+            else:
+                d[macs[key]] = uploadDir
+
         return d
 
     def _get_mac_uploadkey_dict(self):
