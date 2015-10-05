@@ -59,7 +59,7 @@ import signal
 from datetime import datetime
 import ConfigParser
 
-DEFAULTS = {'upload_uid': '-1', 'upload_gid': '-1', 'geotag_enable': '0'}
+DEFAULTS = {'upload_uid': '-1', 'upload_gid': '-1', 'geotag_enable': '0', 'geotag_jpeg_insert': '0'}
 
 import math
 
@@ -646,6 +646,7 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
         eyeFiLogger.debug("Using dir_mode " + dir_mode)
 
         geotag_enable = int(self.server.config.getint('EyeFiServer','geotag_enable'))
+        geotag_jpeg_insert = int(self.server.config.getint('EyeFiServer','geotag_jpeg_insert'))
         if geotag_enable:
             geotag_accuracy = int(self.server.config.get('EyeFiServer','geotag_accuracy'))
 
@@ -668,6 +669,9 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
             eyeFiLogger.error("Failed to open %s" % imageTarPath)
             raise
 
+        mac_to_uploaddir_map = self._get_mac_uploaddir_dict()
+        mac = handler.extractedElements["macaddress"]
+        uploadDirTemplate = mac_to_uploaddir_map[mac]
         for member in imageTarfile.getmembers():
             # If timezone is a daylight savings timezone, and we are
             # currently in daylight savings time, then use the altzone
@@ -678,29 +682,30 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
             timezone = timeoffset / 60 / 60 * -1
             imageDate = datetime.fromtimestamp(member.mtime) - timedelta(hours=timezone)
 
-            mac_to_uploaddir_map = self._get_mac_uploaddir_dict()
-            mac = handler.extractedElements["macaddress"]
-            uploadDir = imageDate.strftime(mac_to_uploaddir_map[mac])
-            eyeFiLogger.debug("Creating folder " + uploadDir)
+            uploadDir = imageDate.strftime(uploadDirTemplate)
             if not os.path.isdir(uploadDir):
+                eyeFiLogger.debug("Creating folder " + uploadDir)
                 os.makedirs(uploadDir)
                 fix_ownership(uploadDir, uid, gid)
                 if file_mode != "":
                     os.chmod(uploadDir, int(dir_mode))
 
             f=imageTarfile.extract(member, uploadDir)
-            imagePath = os.path.join(uploadDir, member.name)
-            eyeFiLogger.debug("imagePath " + imagePath)
-            os.utime(imagePath, (member.mtime + timeoffset, member.mtime + timeoffset))
-            fix_ownership(imagePath, uid, gid)
+            filePath = os.path.join(uploadDir, member.name)
+            eyeFiLogger.debug("filePath " + filePath)
+            os.utime(filePath, (member.mtime + timeoffset, member.mtime + timeoffset))
+            fix_ownership(filePath, uid, gid)
             if file_mode != "":
-                os.chmod(imagePath, int(file_mode))
+                os.chmod(filePath, int(file_mode))
+
+            imagePath = ""
+            xmpPath = ""
 
             if geotag_enable>0 and member.name.lower().endswith(".log"):
-                eyeFiLogger.debug("Processing LOG file " + imagePath)
+                eyeFiLogger.debug("Processing LOG file " + filePath)
                 try:
                     imageName = member.name[:-4]
-                    shottime, aps = list(self.parselog(imagePath,imageName))
+                    shottime, aps = list(self.parselog(filePath,imageName))
                     aps = self.getphotoaps(shottime, aps)
                     loc = self.getlocation(aps)
                     if loc['status']=='OK' and float(loc['accuracy'])<=geotag_accuracy:
@@ -711,14 +716,28 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
                         fix_ownership(xmpPath, uid, gid)
                         if file_mode != "":
                             os.chmod(xmpPath, int(file_mode))
+                        imagePath = os.path.join(uploadDir, imageName)
                 except:
-                    eyeFiLogger.error("Error processing LOG file " + imagePath)
+                    eyeFiLogger.error("Error processing LOG file " + filePath)
 
         eyeFiLogger.debug("Closing TAR file " + imageTarPath)
         imageTarfile.close()
 
         eyeFiLogger.debug("Deleting TAR file " + imageTarPath)
         os.remove(imageTarPath)
+
+        if geotag_jpeg_insert > 0 and imagePath != "" and xmpPath != "" and (imagePath.lower().endswith(".jpg") or imagePath.lower().endswith(".jpeg")):
+            try:
+                eyeFiLogger.debug("Adding GPS exif data to JPG using exiv2 command line")
+                os.system("exiv2 -PEkXyv " + xmpPath + " > " + imagePath + ".tmp")
+                os.system("cat " + imagePath + ".tmp" + " | awk '{print \"add \" $0}' > " + imagePath + ".txt")
+                os.remove(imagePath + ".tmp")
+                os.system("exiv2 -m " + imagePath + ".txt " + imagePath)
+                os.remove(xmpPath)
+                os.remove(imagePath + ".txt")
+                os.remove(imagePath + ".log")
+            except:
+                eyeFiLogger.error("Error adding GPS exif data to file " + filePath)
 
         # Create the XML document to send back
         doc = xml.dom.minidom.Document()
