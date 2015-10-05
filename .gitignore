@@ -3,3 +3,4 @@
 /qpkg/build
 /qpkg/config
 /qpkg/shared
+*.bak

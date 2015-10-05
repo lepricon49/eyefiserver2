@@ -537,7 +537,7 @@ class EyeFiRequestHandler(BaseHTTPRequestHandler):
 
 
             # If the URL is upload and there is no SOAPAction the card is ready to send a picture to me
-            if((self.path == "/api/soap/eyefilm/v1/upload") and (SOAPAction == "")):
+            if((self.path == "/api/soap/eyefilm/v1/upload") and ((SOAPAction == "") or (SOAPAction == "\"urn:UploadPhoto\""))):
                 eyeFiLogger.debug("Got upload request")
                 response = self.uploadPhoto(postData)
                 contentLength = len(response)
